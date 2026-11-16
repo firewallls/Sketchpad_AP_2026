@@ -75,3 +75,6 @@ client/yarn-debug.log*
 client/yarn-error.log*
 client/pnpm-debug.log*
 client/lerna-debug.log*
+
+client/package-lock.json
+server/package-lock.json
