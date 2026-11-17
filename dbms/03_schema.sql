@@ -1,100 +1,271 @@
-generator client {
-  provider = "prisma-client"
-  output   = "../prisma/client"
-}
+-- ============================================================
+-- SKETCHPAD — COMPLETE DATABASE SCHEMA
+-- PostgreSQL
+-- ============================================================
+--
+-- Project: Sketchpad
+-- Database: PostgreSQL
+-- Total Tables: 7
+--
+-- Tables:
+-- 1. user
+-- 2. account
+-- 3. session
+-- 4. verification
+-- 5. Post
+-- 6. Room
+-- 7. RoomInvite
+--
+-- IMPORTANT:
+-- This script creates tables only if they do not already exist.
+-- It does not delete existing tables or existing records.
+--
+-- Execute using pgAdmin 4 Query Tool.
+-- ============================================================
 
-datasource db {
-  provider = "postgresql"
-}
 
-model User {
-  id            String       @id
-  name          String
-  email         String       @unique
-  emailVerified Boolean      @default(false)
-  image         String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  posts         Post[]
-  ownedRooms    Room[]       @relation("RoomOwner")
-  roomInvites   RoomInvite[]
-  accounts      Account[]
-  sessions      Session[]
+-- ============================================================
+-- STEP 1: USER TABLE
+-- ============================================================
+-- Stores registered users and their basic information.
 
-  @@map("user")
-}
 
-model Session {
-  id        String   @id
-  expiresAt DateTime
-  token     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+CREATE TABLE IF NOT EXISTS "user" (
 
-  @@index([userId])
-  @@map("session")
-}
+    id              TEXT PRIMARY KEY,
 
-model Account {
-  id                    String    @id
-  accountId             String
-  providerId            String
-  userId                String
-  accessToken           String?
-  refreshToken          String?
-  idToken               String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope                 String?
-  password              String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    name            TEXT NOT NULL,
 
-  @@index([userId])
-  @@map("account")
-}
+    email           TEXT NOT NULL UNIQUE,
 
-model Verification {
-  id         String   @id
-  identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+    "emailVerified" BOOLEAN NOT NULL DEFAULT FALSE,
 
-  @@index([identifier])
-  @@map("verification")
-}
+    image           TEXT,
 
-model Post {
-  id          Int      @id @default(autoincrement())
-  name        String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
+    "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-  @@index([name])
-}
+    "updatedAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
-model Room {
-  id          String       @id @default(cuid())
-  ownerId     String
-  createdAt   DateTime     @default(now())
-  title       String       @default("Untitled")
-  owner       User         @relation("RoomOwner", fields: [ownerId], references: [id])
-  roomInvites RoomInvite[]
-}
 
-model RoomInvite {
-  id     String @id @default(cuid())
-  roomId String
-  userId String
-  room   Room   @relation(fields: [roomId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
-}
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_user_email
+ON "user" (email);
+
+
+-- ============================================================
+-- STEP 2: ACCOUNT TABLE
+-- ============================================================
+-- Stores authentication provider accounts.
+
+
+CREATE TABLE IF NOT EXISTS account (
+
+    id                      TEXT PRIMARY KEY,
+
+    "accountId"             TEXT NOT NULL,
+
+    "providerId"            TEXT NOT NULL,
+
+    "userId"                TEXT NOT NULL,
+
+    "accessToken"           TEXT,
+
+    "refreshToken"          TEXT,
+
+    "idToken"               TEXT,
+
+    "accessTokenExpiresAt"  TIMESTAMP(3),
+
+    "refreshTokenExpiresAt" TIMESTAMP(3),
+
+    scope                   TEXT,
+
+    password                TEXT,
+
+    "createdAt"             TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    "updatedAt"             TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_account_user
+        FOREIGN KEY ("userId")
+        REFERENCES "user"(id)
+        ON DELETE CASCADE
+);
+
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_account_user
+ON account ("userId");
+
+
+-- ============================================================
+-- STEP 3: SESSION TABLE
+-- ============================================================
+-- Stores authenticated user sessions.
+
+
+CREATE TABLE IF NOT EXISTS session (
+
+    id          TEXT PRIMARY KEY,
+
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+
+    token       TEXT NOT NULL UNIQUE,
+
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    "ipAddress" TEXT,
+
+    "userAgent" TEXT,
+
+    "userId"    TEXT NOT NULL,
+
+    CONSTRAINT fk_session_user
+        FOREIGN KEY ("userId")
+        REFERENCES "user"(id)
+        ON DELETE CASCADE
+);
+
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_session_user
+ON session ("userId");
+
+
+-- ============================================================
+-- STEP 4: VERIFICATION TABLE
+-- ============================================================
+-- Stores verification records.
+
+
+CREATE TABLE IF NOT EXISTS verification (
+
+    id          TEXT PRIMARY KEY,
+
+    identifier  TEXT NOT NULL,
+
+    value       TEXT NOT NULL,
+
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_verification_identifier
+ON verification (identifier);
+
+
+-- ============================================================
+-- STEP 5: POST TABLE
+-- ============================================================
+-- Stores posts created by users.
+
+
+CREATE TABLE IF NOT EXISTS "Post" (
+
+    id          SERIAL PRIMARY KEY,
+
+    name        TEXT NOT NULL,
+
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    "createdById" TEXT NOT NULL,
+
+    CONSTRAINT fk_post_user
+        FOREIGN KEY ("createdById")
+        REFERENCES "user"(id)
+);
+
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_post_name
+ON "Post" (name);
+
+CREATE INDEX IF NOT EXISTS idx_post_created_by
+ON "Post" ("createdById");
+
+
+-- ============================================================
+-- STEP 6: ROOM TABLE
+-- ============================================================
+-- Stores Sketchpad rooms.
+
+
+CREATE TABLE IF NOT EXISTS "Room" (
+
+    id          TEXT PRIMARY KEY,
+
+    "ownerId"   TEXT NOT NULL,
+
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    title       TEXT NOT NULL DEFAULT 'Untitled',
+
+    CONSTRAINT fk_room_owner
+        FOREIGN KEY ("ownerId")
+        REFERENCES "user"(id)
+);
+
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_room_owner
+ON "Room" ("ownerId");
+
+
+-- ============================================================
+-- STEP 7: ROOM INVITE TABLE
+-- ============================================================
+-- Stores invitations connecting users with rooms.
+
+
+CREATE TABLE IF NOT EXISTS "RoomInvite" (
+
+    id      TEXT PRIMARY KEY,
+
+    "roomId" TEXT NOT NULL,
+
+    "userId" TEXT NOT NULL,
+
+    CONSTRAINT fk_room_invite_room
+        FOREIGN KEY ("roomId")
+        REFERENCES "Room"(id),
+
+    CONSTRAINT fk_room_invite_user
+        FOREIGN KEY ("userId")
+        REFERENCES "user"(id)
+);
+
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_room_invite_room
+ON "RoomInvite" ("roomId");
+
+CREATE INDEX IF NOT EXISTS idx_room_invite_user
+ON "RoomInvite" ("userId");
+
+
+-- ============================================================
+-- STEP 8: VERIFY ALL TABLES
+-- ============================================================
+
+-- Check all seven tables
+SELECT
+    table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+AND table_type = 'BASE TABLE'
+ORDER BY table_name;
+
+
+-- ============================================================
+-- END OF SKETCHPAD DATABASE SCHEMA
+-- ============================================================
