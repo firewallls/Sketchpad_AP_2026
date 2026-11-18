@@ -32,9 +32,7 @@ information.
 ### Sketchpad: Case Study Overview
 
 **Sketchpad** is a collaborative online design and whiteboard platform.
-It allows users to create and manage design rooms and work together on
-visual content. The Prisma schema supplied for this project contains
-these capabilities:
+It is intended to let users create and manage design rooms, collaborate, and execute/debug submissions. The logical design described in this document includes:
 
 -   Users can register and maintain account information.
 -   Users can authenticate through stored credentials and linked
@@ -51,8 +49,7 @@ user or room details are repeatedly stored in multiple records, updates
 can become inconsistent and unnecessary duplication can occur. Database
 normalization provides a systematic way to evaluate this structure.
 
-This document analyses only the models and constraints explicitly
-present in the supplied Prisma schema.
+This document analyses the seven application models originally documented from the project design and adds three normalized debugging/execution relations (`Submission`, `Run`, and `Error`). **Important implementation check:** the checked-in `server/prisma/contract.prisma` currently defines only `User` and `Post`; it does not yet implement the seven authentication/room models described below or the three debugging models. The three debugging relations in this document are therefore a proposed logical schema until corresponding Prisma models and migrations are added.
 
 ------------------------------------------------------------------------
 
@@ -93,7 +90,7 @@ documentation demonstrates:
 
 ## 3. Database Overview
 
-The supplied Prisma schema contains **seven relational models**:
+The logical Sketchpad schema documented here contains **ten relational models**:
 
 1.  `User`
 2.  `Account`
@@ -102,9 +99,11 @@ The supplied Prisma schema contains **seven relational models**:
 5.  `Post`
 6.  `Room`
 7.  `RoomInvite`
+8.  `Submission`
+9.  `Run`
+10. `Error`
 
-The following diagram summarizes the relationships declared in the
-schema:
+The following diagram summarizes the logical relationships. The debugging relations are shown separately below because they are not yet present in the checked-in Prisma contract:
 
 ``` text
                          ┌───────────────┐
@@ -230,6 +229,51 @@ composite unique constraint on `(roomId, userId)`. Therefore, the
 current schema does not prevent multiple invitation records for the same
 user-room pair.
 
+### Table 8: `Submission` (proposed debugging table)
+
+Stores a saved code submission made by a user, optionally associated with a room.
+
+- `id` **(Primary Key):** Unique submission identifier.
+- `userId` **(Foreign Key):** References `User(id)`; identifies the submitter.
+- `roomId` **(Nullable Foreign Key):** References `Room(id)` when the submission belongs to a room.
+- `language`: Programming-language identifier for the submitted source.
+- `sourceCode`: Source text for this submission.
+- `createdAt`: Submission creation timestamp.
+
+A submission is the durable source artifact. It is stored once rather than copied into every execution attempt.
+
+### Table 9: `Run` (proposed debugging table)
+
+Stores one execution attempt for a submission. A submission may have zero or many runs.
+
+- `id` **(Primary Key):** Unique execution-run identifier.
+- `submissionId` **(Foreign Key):** References `Submission(id)`.
+- `triggeredById` **(Foreign Key):** References `User(id)`; identifies the user who requested this run.
+- `status`: Execution state, such as queued, running, succeeded, or failed.
+- `stdin`: Input supplied to the execution, if any.
+- `stdout`: Captured standard output.
+- `stderr`: Captured standard error text.
+- `exitCode`: Optional process exit code.
+- `startedAt`, `completedAt`: Optional execution timestamps.
+
+Each retry or re-execution creates a new `Run`; run-specific results are not written back into `Submission`.
+
+### Table 10: `Error` (proposed debugging table)
+
+Stores individual diagnostics emitted by a run. A run may produce zero or many error records.
+
+- `id` **(Primary Key):** Unique diagnostic identifier.
+- `runId` **(Foreign Key):** References `Run(id)`.
+- `kind`: Diagnostic category, such as compile, runtime, or validation.
+- `message`: Error or diagnostic message.
+- `line`, `column`: Optional source location.
+- `stackTrace`: Optional textual stack trace.
+- `createdAt`: Diagnostic creation timestamp.
+
+`Error` deliberately references `Run`, not both `Run` and `Submission`: the associated submission is obtained through `Run.submissionId`. This avoids storing the same relationship twice and prevents inconsistent run/submission pairs.
+
+**Design note:** These three models are a normalized logical design proposed for the requested debugging feature. They are not currently implemented in `contract.prisma`.
+
 ------------------------------------------------------------------------
 
 ## 4. Functional Dependencies
@@ -239,7 +283,7 @@ a relation. For attribute sets X and Y, **X → Y** means that the value
 of X uniquely determines the value of Y.
 
 The dependencies below are derived from the primary keys and unique
-constraints declared in the supplied Prisma schema.
+constraints declared in the documented logical design.
 
 ### Functional Dependencies in Sketchpad Tables
 
@@ -297,6 +341,29 @@ constraints declared in the supplied Prisma schema.
 -   **Foreign Keys:** `roomId` references `Room(id)` and `userId`
     references `User(id)`.
 
+#### 8. `Submission`
+
+-   `id → userId, roomId, language, sourceCode, createdAt`
+-   **Candidate Key:** `{id}`
+-   **Primary Key:** `id`
+-   **Foreign Keys:** `userId` references `User(id)`; nullable `roomId` references `Room(id)`.
+
+#### 9. `Run`
+
+-   `id → submissionId, triggeredById, status, stdin, stdout, stderr, exitCode, startedAt, completedAt`
+-   **Candidate Key:** `{id}`
+-   **Primary Key:** `id`
+-   **Foreign Keys:** `submissionId` references `Submission(id)` and `triggeredById` references `User(id)`.
+
+#### 10. `Error`
+
+-   `id → runId, kind, message, line, column, stackTrace, createdAt`
+-   **Candidate Key:** `{id}`
+-   **Primary Key:** `id`
+-   **Foreign Key:** `runId` references `Run(id)`.
+
+These dependencies assume that no additional business-rule candidate keys (for example, a unique submission version number within a room) have been specified.
+
 ------------------------------------------------------------------------
 
 ## 5. First Normal Form (1NF)
@@ -330,8 +397,8 @@ If `room_details` stores several room names in one field, such as
 `"Design Board, Team Whiteboard, Project Draft"`, the field contains
 multiple values rather than one atomic value. This violates 1NF.
 
-The supplied Prisma schema avoids this repeating group by storing users,
-rooms, and invitations in separate models.
+The normalized logical design avoids this repeating group by storing users,
+rooms, invitations, submissions, runs, and diagnostics in separate relations.
 
 ### 5.3 Before-Normalization Table (Violates 1NF)
 
@@ -389,6 +456,25 @@ row in its corresponding relation.
 *The values above are illustrative examples, not actual database
 records.*
 
+#### Debugging Tables (1NF)
+
+The debugging workflow also uses one row per saved submission, one row per execution attempt, and one row per diagnostic. For example:
+
+| Submission | userId | roomId | language | sourceCode |
+|---|---|---|---|---|
+| SUB101 | U101 | R101 | javascript | `console.log(1)` |
+
+| Run | submissionId | triggeredById | status | exitCode |
+|---|---|---|---|---|
+| RUN201 | SUB101 | U101 | succeeded | 0 |
+| RUN202 | SUB101 | U102 | failed | 1 |
+
+| Error | runId | kind | message | line | column |
+|---|---|---|---|---:|---:|
+| ERR301 | RUN202 | runtime | `ReferenceError: x is not defined` | 1 | 13 |
+
+*These rows are illustrative. A run can have multiple `Error` rows; an error is never stored as a comma-separated list in one field.*
+
 ### 5.5 Step-by-Step Explanation
 
 1.  **Identify Multi-Valued Attributes:** Find fields such as
@@ -402,10 +488,9 @@ records.*
 
 ### 5.6 Result
 
-The supplied schema follows the 1NF structure because its models use
+The documented logical schema follows the 1NF structure because its relations use
 individual scalar attributes and represent related records through
-separate relations. It does not store a list of rooms or invitations
-inside a single relational field.
+separate rows. The checked-in Prisma contract has not yet been updated to implement all these relations. It does not store a list of rooms, invitations, runs, or errors inside a single relational field. Each debugging event is represented by its own row.
 
 ------------------------------------------------------------------------
 
@@ -549,16 +634,25 @@ it is not present in the supplied Prisma `RoomInvite` model.*
 
 ### 6.7 Evaluation of the Supplied Schema
 
-In the supplied Prisma schema, every model has a single-column primary
+In the seven originally documented models, every model has a single-column primary
 key except `VerificationToken`, which has no explicitly declared primary
 key and instead declares unique constraints. `Account` also has a
 composite unique constraint on `(provider, providerAccountId)`, and its
 other attributes are functionally determined by that complete pair.
 
 The declared relations do not show a non-prime attribute depending on
-only part of a composite candidate key. Therefore, the supplied
+only part of a composite candidate key. Therefore, the documented
 relations satisfy 2NF under the functional dependencies identified in
-this document.
+this document. The proposed debugging relations also use a single-column
+primary key (`id`) and have no composite candidate key in the stated
+design; consequently, no partial dependency is possible in those
+relations. Their attributes depend on the complete row identifier:
+
+- `Submission`: `id → userId, roomId, language, sourceCode, createdAt`.
+- `Run`: `id → submissionId, triggeredById, status, stdin, stdout, stderr, exitCode, startedAt, completedAt`.
+- `Error`: `id → runId, kind, message, line, column, stackTrace, createdAt`.
+
+This 2NF conclusion is conditional on the stated keys and business rules.
 
 ------------------------------------------------------------------------
 
@@ -686,7 +780,7 @@ and room details in `Room`.
 
 ### 7.7 Evaluation of the Supplied Schema
 
-The supplied Prisma schema already separates user information from room
+The seven originally documented logical relations separate user information from room
 information:
 
 -   `User` stores `name`, `email`, and other user attributes.
@@ -695,11 +789,19 @@ information:
 -   `Post.createdById` references `User.id`.
 -   `RoomInvite` references both `Room.id` and `User.id`.
 
-The schema therefore avoids storing the user's email or name repeatedly
-in the `Room`, `Post`, or `RoomInvite` models. Based on the declared
+This logical design therefore avoids storing the user's email or name repeatedly
+in the `Room`, `Post`, or `RoomInvite` relations. Based on the declared
 functional dependencies, no transitive dependency violation is evident
-in the supplied relations. The schema satisfies 3NF under these
+in the seven originally documented relations. They satisfy 3NF under these
 assumptions.
+
+The proposed debugging relations follow the same separation principle:
+
+- `Submission` stores the source artifact and its submitter/optional room references, but does not duplicate the user's name/email or room title.
+- `Run` stores execution-specific status, input, output, exit code, and timestamps. It stores `submissionId` and `triggeredById`, not copied source code or user profile details.
+- `Error` stores diagnostics against `runId`. It does not repeat `submissionId`, source code, room title, or user details; those are reachable through the `Run` and `Submission` relationships.
+
+Thus, under the stated functional dependencies, the proposed `Submission`, `Run`, and `Error` relations introduce no transitive dependency among non-key attributes and satisfy 3NF.
 
 ------------------------------------------------------------------------
 
@@ -730,14 +832,16 @@ to identify records:
 -   `Post`: `id` identifies a post.
 -   `Room`: `id` identifies a room.
 -   `RoomInvite`: `id` identifies an invitation.
+-   `Submission`: `id` identifies a submission.
+-   `Run`: `id` identifies an execution attempt.
+-   `Error`: `id` identifies a diagnostic record.
 
 For the functional dependencies represented by these declared keys and
 unique constraints, each determinant is a candidate key or a superkey of
 its relation. No non-trivial functional dependency with a non-superkey
-determinant is specified by the supplied schema.
+determinant is specified by the stated logical design.
 
-Therefore, **the seven supplied relations satisfy BCNF under the
-functional dependencies and constraints declared in the Prisma schema**.
+Therefore, **the seven originally documented relations and the three proposed debugging relations satisfy BCNF under the stated functional dependencies and key assumptions**. This is a logical-design conclusion, not evidence that all ten models are currently implemented in Prisma.
 
 ### 8.3 Illustrative Room-Collaboration Relation
 
@@ -771,8 +875,8 @@ both 3NF and BCNF. It illustrates a determinant violation, but it is
 
 ### 8.4 Correct BCNF Evaluation
 
-For the actual supplied Sketchpad schema, a separate BCNF decomposition
-is not required based on the declared dependencies. Each relation's
+For the documented logical Sketchpad schema, a separate BCNF decomposition
+is not required based on the stated dependencies. Each relation's
 non-trivial dependencies are determined by its declared primary key or
 unique candidate keys.
 
@@ -784,7 +888,7 @@ the implemented database.
 
 ### 8.5 Step-by-Step BCNF Verification
 
-1.  **List the Relations:** Identify all seven Prisma models.
+1.  **List the Relations:** Identify the seven originally documented models and the three proposed debugging models.
 2.  **Identify Candidate Keys:** Use the primary keys and unique
     constraints declared in the schema.
 3.  **List the Functional Dependencies:** Determine which attributes are
@@ -792,14 +896,14 @@ the implemented database.
 4.  **Check Every Determinant:** For each non-trivial dependency
     `X → Y`, verify that `X` is a superkey.
 5.  **Confirm the Result:** The declared dependencies are determined by
-    candidate keys or superkeys; therefore, the supplied schema
+    candidate keys or superkeys; therefore, the documented logical design
     satisfies BCNF under the stated assumptions.
 
 ### 8.6 Result
 
-The supplied Sketchpad schema satisfies BCNF based on its declared
+The documented logical Sketchpad schema satisfies BCNF based on its stated
 primary keys, unique constraints, and relationships. No decomposition is
-necessary for the current set of models solely to achieve BCNF.
+necessary for these relations solely to achieve BCNF. The checked-in Prisma contract still requires implementation work.
 
 ------------------------------------------------------------------------
 
@@ -808,11 +912,11 @@ necessary for the current set of models solely to achieve BCNF.
 Through the analysis of the Sketchpad Prisma schema, we have evaluated
 the database structure using the four major normal forms:
 
-1.  **1NF (Atomicity):** The schema stores user, room, post, account,
-    session, verification-token, and invitation records as separate
-    relations. It does not define multi-valued room or invitation lists
+1.  **1NF (Atomicity):** The logical design stores user, room, post, account,
+    session, verification-token, invitation, submission, run, and error
+    records as separate relations. It does not define multi-valued room or invitation lists
     inside a single relational field.
-2.  **2NF (No Partial Dependencies):** The schema's relations use
+2.  **2NF (No Partial Dependencies):** The documented and proposed relations use
     single-column primary keys or declared candidate keys. No non-prime
     attribute is shown to depend on only part of a composite candidate
     key.
@@ -857,15 +961,6 @@ the database structure using the four major normal forms:
                                                          condition.
   ------------------------------------------------------------------------
 
-By keeping users, rooms, invitations, posts, and authentication records
-in separate relations, **Sketchpad** maintains a structured database
-design with reduced duplication and clear relationships. The primary
-keys, unique constraints, and foreign keys declared in the Prisma schema
-help enforce entity integrity and referential integrity.
+By keeping users, rooms, invitations, posts, authentication records, submissions, execution runs, and diagnostics in separate relations, **Sketchpad** maintains a structured database design with reduced duplication and clear relationships. The proposed primary keys, unique constraints, and foreign keys help enforce entity integrity and referential integrity once implemented in the database.
 
-**Scope Note:** This document analyses the Prisma schema supplied for
-the project. It does not assume additional tables for canvas objects,
-shapes, comments, cursor activity, or collaboration permissions because
-those models are not present in the provided schema. The schema declares
-`provider = "postgresql"`; this analysis is therefore based on the
-PostgreSQL relational model.
+**Implementation and Scope Note:** The uploaded project does not currently contain a Prisma schema matching the seven authentication/room models described in this document: `server/prisma/contract.prisma` defines only `User` and `Post`. It also does not contain `Submission`, `Run`, or `Error` models. The three debugging tables added here are proposed logical relations and must still be implemented in the Prisma contract/migrations before they exist in the running database. This document does not assume additional tables for canvas objects, shapes, comments, cursor activity, or collaboration permissions. The proposed relations use PostgreSQL-compatible relational design.
