@@ -253,8 +253,101 @@ CREATE INDEX IF NOT EXISTS idx_room_invite_user
 ON "RoomInvite" ("userId");
 
 
+
 -- ============================================================
--- STEP 8: VERIFY ALL TABLES
+-- STEP 8: SUBMISSION TABLE
+-- ============================================================
+-- Stores code submissions made by users.
+
+CREATE TABLE IF NOT EXISTS "Submission" (
+
+    id          TEXT PRIMARY KEY,
+    "userId"    TEXT NOT NULL,
+    "roomId"    TEXT,
+    language    TEXT NOT NULL,
+    "sourceCode" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_submission_user
+        FOREIGN KEY ("userId")
+        REFERENCES "user"(id),
+
+    CONSTRAINT fk_submission_room
+        FOREIGN KEY ("roomId")
+        REFERENCES "Room"(id)
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_submission_user
+ON "Submission" ("userId");
+
+CREATE INDEX IF NOT EXISTS idx_submission_room
+ON "Submission" ("roomId");
+
+
+-- ============================================================
+-- STEP 9: RUN TABLE
+-- ============================================================
+-- Stores individual execution attempts for submissions.
+
+CREATE TABLE IF NOT EXISTS "Run" (
+
+    id              TEXT PRIMARY KEY,
+    "submissionId"  TEXT NOT NULL,
+    "triggeredById" TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    stdin           TEXT,
+    stdout          TEXT,
+    stderr          TEXT,
+    "exitCode"      INTEGER,
+    "startedAt"     TIMESTAMP(3),
+    "completedAt"   TIMESTAMP(3),
+
+    CONSTRAINT fk_run_submission
+        FOREIGN KEY ("submissionId")
+        REFERENCES "Submission"(id),
+
+    CONSTRAINT fk_run_user
+        FOREIGN KEY ("triggeredById")
+        REFERENCES "user"(id)
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_run_submission
+ON "Run" ("submissionId");
+
+CREATE INDEX IF NOT EXISTS idx_run_triggered_by
+ON "Run" ("triggeredById");
+
+
+-- ============================================================
+-- STEP 10: ERROR TABLE
+-- ============================================================
+-- Stores individual errors and diagnostics produced by runs.
+
+CREATE TABLE IF NOT EXISTS "Error" (
+
+    id          TEXT PRIMARY KEY,
+    "runId"     TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    line        INTEGER,
+    "column"    INTEGER,
+    "stackTrace" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_error_run
+        FOREIGN KEY ("runId")
+        REFERENCES "Run"(id)
+);
+
+-- Index
+CREATE INDEX IF NOT EXISTS idx_error_run
+ON "Error" ("runId");
+
+
+-- ============================================================
+-- STEP 11: VERIFY ALL TABLES
 -- ============================================================
 
 -- Check all seven tables
