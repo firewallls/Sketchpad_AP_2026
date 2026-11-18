@@ -31,19 +31,12 @@
 
 
 CREATE TABLE IF NOT EXISTS "user" (
-
     id              TEXT PRIMARY KEY,
-
     name            TEXT NOT NULL,
-
     email           TEXT NOT NULL UNIQUE,
-
     "emailVerified" BOOLEAN NOT NULL DEFAULT FALSE,
-
     image           TEXT,
-
     "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     "updatedAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -60,31 +53,18 @@ ON "user" (email);
 
 
 CREATE TABLE IF NOT EXISTS account (
-
     id                      TEXT PRIMARY KEY,
-
     "accountId"             TEXT NOT NULL,
-
     "providerId"            TEXT NOT NULL,
-
     "userId"                TEXT NOT NULL,
-
     "accessToken"           TEXT,
-
     "refreshToken"          TEXT,
-
     "idToken"               TEXT,
-
     "accessTokenExpiresAt"  TIMESTAMP(3),
-
     "refreshTokenExpiresAt" TIMESTAMP(3),
-
     scope                   TEXT,
-
     password                TEXT,
-
     "createdAt"             TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     "updatedAt"             TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_account_user
@@ -106,21 +86,13 @@ ON account ("userId");
 
 
 CREATE TABLE IF NOT EXISTS session (
-
     id          TEXT PRIMARY KEY,
-
     "expiresAt" TIMESTAMP(3) NOT NULL,
-
     token       TEXT NOT NULL UNIQUE,
-
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     "ipAddress" TEXT,
-
     "userAgent" TEXT,
-
     "userId"    TEXT NOT NULL,
 
     CONSTRAINT fk_session_user
@@ -142,17 +114,11 @@ ON session ("userId");
 
 
 CREATE TABLE IF NOT EXISTS verification (
-
     id          TEXT PRIMARY KEY,
-
     identifier  TEXT NOT NULL,
-
     value       TEXT NOT NULL,
-
     "expiresAt" TIMESTAMP(3) NOT NULL,
-
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -169,15 +135,10 @@ ON verification (identifier);
 
 
 CREATE TABLE IF NOT EXISTS "Post" (
-
     id          SERIAL PRIMARY KEY,
-
     name        TEXT NOT NULL,
-
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     "createdById" TEXT NOT NULL,
 
     CONSTRAINT fk_post_user
@@ -201,13 +162,9 @@ ON "Post" ("createdById");
 
 
 CREATE TABLE IF NOT EXISTS "Room" (
-
     id          TEXT PRIMARY KEY,
-
     "ownerId"   TEXT NOT NULL,
-
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     title       TEXT NOT NULL DEFAULT 'Untitled',
 
     CONSTRAINT fk_room_owner
@@ -228,13 +185,9 @@ ON "Room" ("ownerId");
 
 
 CREATE TABLE IF NOT EXISTS "RoomInvite" (
-
     id      TEXT PRIMARY KEY,
-
     "roomId" TEXT NOT NULL,
-
     "userId" TEXT NOT NULL,
-
     CONSTRAINT fk_room_invite_room
         FOREIGN KEY ("roomId")
         REFERENCES "Room"(id),
@@ -260,7 +213,6 @@ ON "RoomInvite" ("userId");
 -- Stores code submissions made by users.
 
 CREATE TABLE IF NOT EXISTS "Submission" (
-
     id          TEXT PRIMARY KEY,
     "userId"    TEXT NOT NULL,
     "roomId"    TEXT,
@@ -291,7 +243,6 @@ ON "Submission" ("roomId");
 -- Stores individual execution attempts for submissions.
 
 CREATE TABLE IF NOT EXISTS "Run" (
-
     id              TEXT PRIMARY KEY,
     "submissionId"  TEXT NOT NULL,
     "triggeredById" TEXT NOT NULL,
@@ -326,7 +277,6 @@ ON "Run" ("triggeredById");
 -- Stores individual errors and diagnostics produced by runs.
 
 CREATE TABLE IF NOT EXISTS "Error" (
-
     id          TEXT PRIMARY KEY,
     "runId"     TEXT NOT NULL,
     kind        TEXT NOT NULL,
