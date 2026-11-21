@@ -4,6 +4,7 @@
 /* === FEATURE 4: FREEFORM DRAWING === */
 
 import {
+  useBroadcastEvent,
   useCanRedo,
   useCanUndo,
   useHistory,
@@ -32,6 +33,10 @@ import useDeleteLayers from "../../hooks/useDeleteLayers";
 import SelectionTools from "./SelectionTools";
 import Sidebars from "../sidebars/Sidebars";
 import MultiplayerGuides from "./MultiplayerGuides";
+import CursorChat from "./CursorChat";
+import Reactions from "./Reactions";
+import ReactionSelector from "./ReactionSelector";
+import CommentsOverlay from "./comments/CommentsOverlay";
 
 const MAX_LAYERS = 100;
 
@@ -86,6 +91,73 @@ export default function Canvas({
   const [penColor, setPenColor] = useState({ r: 30, g: 30, b: 30 });
   const [penSize, setPenSize] = useState(16);
 
+  /* === COLLABORATIVE FEATURES: Cursor Chat, Reactions, Comments === */
+  const [cursorScreen, setCursorScreen] = useState(null);
+  const [isCursorChatActive, setIsCursorChatActive] = useState(false);
+  const [isReactionsActive, setIsReactionsActive] = useState(false);
+  const [selectedReactionEmoji, setSelectedReactionEmoji] = useState("👍");
+  const [reactions, setReactions] = useState([]);
+  const [draftCommentPoint, setDraftCommentPoint] = useState(null);
+
+  const broadcast = useBroadcastEvent();
+
+  const unresolvedCommentsCount = useStorage((root) => {
+    const raw = root.comments;
+    if (!raw) return 0;
+    if (Array.isArray(raw)) {
+      return raw.filter((c) => !c?.resolved).length;
+    }
+    if (typeof raw.filter === "function") {
+      return raw.filter((c) => {
+        const res =
+          typeof c?.get === "function" ? c.get("resolved") : c?.resolved;
+        return !res;
+      }).length;
+    }
+    return 0;
+  });
+
+  const fireReaction = useCallback(
+    (emoji = selectedReactionEmoji, targetPoint) => {
+      const pt =
+        targetPoint ||
+        (cursorScreen
+          ? pointerEventToCanvasPoint(
+              { clientX: cursorScreen.x, clientY: cursorScreen.y },
+              camera,
+            )
+          : { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
+
+      const reaction = {
+        id: nanoid(),
+        emoji,
+        x: pt.x,
+        y: pt.y,
+        createdAt: Date.now(),
+        offset: (Math.random() - 0.5) * 36,
+      };
+
+      broadcast({ type: "REACTION", ...reaction });
+      setReactions((prev) => [...prev.slice(-40), reaction]);
+    },
+    [broadcast, camera, cursorScreen, selectedReactionEmoji],
+  );
+
+  const focusOnUser = useCallback(
+    (user) => {
+      if (user?.cursor) {
+        const nextX = Math.round(
+          window.innerWidth / 2 - user.cursor.x * camera.zoom,
+        );
+        const nextY = Math.round(
+          window.innerHeight / 2 - user.cursor.y * camera.zoom,
+        );
+        setCamera((cam) => clampCamera(cam, nextX, nextY, cam.zoom));
+      }
+    },
+    [camera.zoom],
+  );
+
   const selectAllLayers = useMutation(
     ({ setMyPresence }) => {
       if (layerIds) {
@@ -106,6 +178,34 @@ export default function Canvas({
       if (isInputField) return;
 
       switch (e.key) {
+        case "/":
+          e.preventDefault();
+          setIsCursorChatActive(true);
+          break;
+        case "e":
+        case "E":
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setIsReactionsActive((prev) => !prev);
+          }
+          break;
+        case "c":
+        case "C":
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setState((prev) =>
+              prev.mode === CanvasMode.Comment
+                ? { mode: CanvasMode.None }
+                : { mode: CanvasMode.Comment },
+            );
+          }
+          break;
+        case "Escape":
+          setIsCursorChatActive(false);
+          setIsReactionsActive(false);
+          setDraftCommentPoint(null);
+          setState({ mode: CanvasMode.None });
+          break;
         case "Backspace":
         case "Delete":
           deleteLayers();
@@ -494,6 +594,16 @@ export default function Canvas({
     ({}, e) => {
       const point = pointerEventToCanvasPoint(e, camera);
 
+      if (isReactionsActive) {
+        fireReaction(selectedReactionEmoji, point);
+        return;
+      }
+
+      if (canvasState.mode === CanvasMode.Comment) {
+        setDraftCommentPoint(point);
+        return;
+      }
+
       if (canvasState.mode === CanvasMode.Dragging) {
         setState({ mode: CanvasMode.Dragging, origin: point });
         return;
@@ -508,7 +618,15 @@ export default function Canvas({
 
       setState({ origin: point, mode: CanvasMode.Pressing });
     },
-    [camera, canvasState.mode, setState, startDrawing],
+    [
+      camera,
+      canvasState.mode,
+      isReactionsActive,
+      fireReaction,
+      selectedReactionEmoji,
+      setState,
+      startDrawing,
+    ],
   );
 
   const startMultiSelection = useCallback((current, origin) => {
@@ -540,6 +658,7 @@ export default function Canvas({
 
   const onPointerMove = useMutation(
     ({ setMyPresence }, e) => {
+      setCursorScreen({ x: e.clientX, y: e.clientY });
       const point = pointerEventToCanvasPoint(e, camera);
 
       if (canvasState.mode === CanvasMode.Pressing) {
@@ -580,6 +699,7 @@ export default function Canvas({
   const onPointerUp = useMutation(
     ({}, e) => {
       if (canvasState.mode === CanvasMode.RightClick) return;
+      if (canvasState.mode === CanvasMode.Comment) return;
 
       const point = pointerEventToCanvasPoint(e, camera);
 
@@ -609,9 +729,13 @@ export default function Canvas({
   }, []);
 
   return (
-    <div className="flex h-screen w-full">
+    <div className="flex h-screen w-full relative">
       <main className="fixed left-0 right-0 h-screen overflow-hidden select-none">
-        <div className="h-full w-full touch-none bg-[#f1f3f5]">
+        <div
+          className={`h-full w-full touch-none bg-[#f1f3f5] ${
+            canvasState.mode === CanvasMode.Comment ? "cursor-crosshair" : ""
+          }`}
+        >
           <SelectionTools camera={camera} canvasMode={canvasState.mode} />
           <svg
             onWheel={onWheel}
@@ -727,8 +851,51 @@ export default function Canvas({
               )}
             </g>
           </svg>
+
+          {/* Transformed HTML Overlay for Comments & Floating Reactions */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div
+              style={{
+                transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`,
+                transformOrigin: "0 0",
+                position: "absolute",
+                left: 0,
+                top: 0,
+                width: "100%",
+                height: "100%",
+              }}
+              className="pointer-events-none"
+            >
+              {/* Comment Pins & Threads */}
+              <CommentsOverlay
+                draftPoint={draftCommentPoint}
+                setDraftPoint={setDraftCommentPoint}
+                filter="all"
+              />
+
+              {/* Collaborative Reactions Firework Burst */}
+              <Reactions reactions={reactions} setReactions={setReactions} />
+            </div>
+          </div>
         </div>
       </main>
+
+      {/* Local Cursor Chat Floating Input */}
+      <CursorChat
+        cursorScreen={cursorScreen}
+        isActive={isCursorChatActive}
+        onClose={() => setIsCursorChatActive(false)}
+      />
+
+      {/* Floating Reaction Selector Bar */}
+      {isReactionsActive && (
+        <ReactionSelector
+          selectedEmoji={selectedReactionEmoji}
+          onSelectEmoji={(emoji) => setSelectedReactionEmoji(emoji)}
+          onFireReaction={(emoji) => fireReaction(emoji)}
+          onClose={() => setIsReactionsActive(false)}
+        />
+      )}
 
       {/* Toolbar with Shapes, Image Upload, Pencil, and Zoom Controls */}
       <ToolsBar
@@ -737,10 +904,24 @@ export default function Canvas({
         zoom={camera.zoom}
         resetView={resetView}
         zoomIn={() => {
-          setCamera((cam) => clampCamera(cam, cam.x, cam.y, Math.min(2.5, Number((cam.zoom + 0.1).toFixed(2)))));
+          setCamera((cam) =>
+            clampCamera(
+              cam,
+              cam.x,
+              cam.y,
+              Math.min(2.5, Number((cam.zoom + 0.1).toFixed(2))),
+            ),
+          );
         }}
         zoomOut={() => {
-          setCamera((cam) => clampCamera(cam, cam.x, cam.y, Math.max(0.4, Number((cam.zoom - 0.1).toFixed(2)))));
+          setCamera((cam) =>
+            clampCamera(
+              cam,
+              cam.x,
+              cam.y,
+              Math.max(0.4, Number((cam.zoom - 0.1).toFixed(2))),
+            ),
+          );
         }}
         canZoomIn={camera.zoom < 2.5}
         canZoomOut={camera.zoom > 0.4}
@@ -753,6 +934,11 @@ export default function Canvas({
         setPenColor={setPenColor}
         penSize={penSize}
         setPenSize={setPenSize}
+        isCursorChatActive={isCursorChatActive}
+        setIsCursorChatActive={setIsCursorChatActive}
+        isReactionsActive={isReactionsActive}
+        setIsReactionsActive={setIsReactionsActive}
+        unresolvedCommentsCount={unresolvedCommentsCount}
       />
 
       <Sidebars
@@ -761,6 +947,7 @@ export default function Canvas({
         othersWithAccessToRoom={othersWithAccessToRoom}
         leftIsMinimized={leftIsMinimized}
         setLeftIsMinimized={setLeftIsMinimized}
+        onFocusUser={focusOnUser}
       />
     </div>
   );

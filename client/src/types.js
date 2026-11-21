@@ -31,6 +31,7 @@ export const CanvasMode = Object.freeze({
   SelectionNet: 6,
   Pressing: 7,
   RightClick: 8,
+  Comment: 9,
 });
 
 // Factory helpers for creating plain objects with default shapes

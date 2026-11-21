@@ -23,6 +23,7 @@ import ColorPicker from "./ColorPicker";
 import Dropdown from "./Dropdown";
 import UserAvatar from "./UserAvatar";
 import ShareMenu from "./ShareMenu";
+import ActiveUsers from "../canvas/ActiveUsers";
 
 export default function Sidebars({
   roomName,
@@ -30,6 +31,7 @@ export default function Sidebars({
   othersWithAccessToRoom,
   leftIsMinimized,
   setLeftIsMinimized,
+  onFocusUser,
 }) {
   const me = useSelf();
   const others = useOthers();
@@ -246,22 +248,8 @@ export default function Sidebars({
           className={`fixed ${leftIsMinimized && layer ? "bottom-3 right-3 top-3 rounded-xl" : ""} ${!leftIsMinimized && !layer ? "h-screen" : ""} ${!leftIsMinimized && layer ? "bottom-0 top-0 h-screen" : ""} right-0 z-20 flex w-[240px] flex-col border-l border-gray-200 bg-white overflow-y-auto`}
         >
           {/* Header & Avatars */}
-          <div className="flex items-center justify-between pr-2">
-            <div className="max-36 flex w-full gap-2 overflow-x-scroll p-3 text-xs">
-              {me && (
-                <UserAvatar
-                  color={connectionIdToColor(me.connectionId)}
-                  name={me.info.name}
-                />
-              )}
-              {others.map((other) => (
-                <UserAvatar
-                  key={other.connectionId}
-                  color={connectionIdToColor(other.connectionId)}
-                  name={other.info.name}
-                />
-              ))}
-            </div>
+          <div className="flex items-center justify-between p-3 gap-2">
+            <ActiveUsers onFocusUser={onFocusUser} />
             <ShareMenu
               roomId={roomId}
               othersWithAccessToRoom={othersWithAccessToRoom}
@@ -511,22 +499,8 @@ export default function Sidebars({
           )}
         </div>
       ) : (
-        <div className="fixed right-3 top-3 flex h-[48px] w-[250px] items-center justify-between rounded-xl border bg-white pr-2">
-          <div className="max-36 flex w-full gap-2 overflow-x-scroll p-3 text-xs">
-            {me && (
-              <UserAvatar
-                color={connectionIdToColor(me.connectionId)}
-                name={me.info.name}
-              />
-            )}
-            {others.map((other) => (
-              <UserAvatar
-                key={other.connectionId}
-                color={connectionIdToColor(other.connectionId)}
-                name={other.info.name}
-              />
-            ))}
-          </div>
+        <div className="fixed right-3 top-3 z-20 flex h-[48px] min-w-[250px] items-center justify-between rounded-xl border border-gray-200 bg-white px-3 shadow-sm gap-3">
+          <ActiveUsers onFocusUser={onFocusUser} />
           <ShareMenu
             roomId={roomId}
             othersWithAccessToRoom={othersWithAccessToRoom}
