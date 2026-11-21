@@ -1,6 +1,3 @@
-/* === FEATURE 1: CREATING DIFFERENT SHAPES === */
-/* === FEATURE 2: UPLOADING IMAGES === */
-/* === FEATURE 4: FREEFORM DRAWING === */
 import { CanvasMode, LayerType } from "../../types";
 import SelectionButton from "./SelectionButton";
 import ShapesSelectionButton from "./ShapesSelectionButton";
@@ -28,6 +25,8 @@ export default function ToolsBar({
   canRedo,
   undo,
   redo,
+  clearCanvas,
+  exportCanvas,
   onInsertImage,
   penColor,
   setPenColor,
@@ -154,6 +153,21 @@ export default function ToolsBar({
           </button>
           <ZoomInButton onClick={zoomIn} disabled={!canZoomIn} />
         </div>
+        <div className="w-[1px] self-stretch bg-black/10" />
+        <button
+          type="button"
+          onClick={clearCanvas}
+          className="rounded-md px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          onClick={exportCanvas}
+          className="rounded-md px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+        >
+          Export
+        </button>
       </div>
     </div>
   );
