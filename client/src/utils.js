@@ -60,7 +60,8 @@ export function resizeBounds(bounds, corner, point) {
   return result;
 }
 
-export function penPointsToPathPayer(points, color) {
+/* === FEATURE 4: FREEFORM DRAWING === */
+export function penPointsToPathPayer(points, color, strokeWidth = 16) {
   let left = Number.POSITIVE_INFINITY;
   let top = Number.POSITIVE_INFINITY;
   let right = Number.NEGATIVE_INFINITY;
@@ -88,10 +89,11 @@ export function penPointsToPathPayer(points, color) {
     type: LayerType.Path,
     x: left,
     y: top,
-    height: bottom - top,
-    width: right - left,
+    height: Math.max(bottom - top, 1),
+    width: Math.max(right - left, 1),
     fill: color,
     stroke: color,
+    strokeWidth,
     opacity: 100,
     points: points
       .filter(
@@ -125,9 +127,10 @@ export function getSvgPathFromStroke(stroke) {
 }
 
 export const pointerEventToCanvasPoint = (e, camera) => {
+  const zoom = camera?.zoom || 1;
   return {
-    x: Math.round(e.clientX) - camera.x,
-    y: Math.round(e.clientY) - camera.y,
+    x: Math.round((e.clientX - camera.x) / zoom),
+    y: Math.round((e.clientY - camera.y) / zoom),
   };
 };
 

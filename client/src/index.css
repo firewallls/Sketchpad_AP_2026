@@ -5,3 +5,18 @@
     font-family: "Inter", sans-serif;
   }
 }
+
+/* Custom styling for react-colorful inside the sidebars */
+.react-colorful {
+  width: 100% !important;
+  height: 140px !important;
+  border-radius: 8px !important;
+}
+
+.react-colorful__saturation {
+  border-radius: 8px 8px 0 0 !important;
+}
+
+.react-colorful__last-control {
+  border-radius: 0 0 8px 8px !important;
+}
